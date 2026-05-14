@@ -40,17 +40,34 @@ If `caffeinate` does what you need, use `caffeinate`. If you want notifications 
 
 Requires macOS 11+ and Swift 5.9+ (ships with Xcode / Command Line Tools).
 
+**One-liner (recommended):**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mcdeeai/wake/main/install.sh | bash
+```
+
+Add `-s -- --clamshell` to also do the one-time clamshell setup:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mcdeeai/wake/main/install.sh | bash -s -- --clamshell
+```
+
+The installer clones into `~/.local/share/wake/src`, builds with `swift build -c release`, and installs the binary to `/usr/local/bin/wake` (one sudo prompt). Re-run it anytime to update. Read [`install.sh`](install.sh) before piping anything to bash, obviously.
+
+**Or, from a clone:**
+
 ```sh
 git clone https://github.com/mcdeeai/wake.git
 cd wake
-swift build -c release
-cp .build/release/wake /usr/local/bin/
+make install                  # build + sudo-install to /usr/local/bin
+make clamshell-setup          # optional: enable lid-closed mode
 ```
 
-Or in one line:
+**Manually:**
 
 ```sh
-swift build -c release && sudo install .build/release/wake /usr/local/bin/wake
+swift build -c release
+sudo install .build/release/wake /usr/local/bin/wake
 ```
 
 ## Usage
