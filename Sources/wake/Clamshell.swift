@@ -87,10 +87,20 @@ func launchdPlistContent() -> String {
 
 // MARK: - Claim / release
 
+enum ClamshellMode {
+    case auto       // use it if set up, skip silently if not
+    case require    // user explicitly asked; error if not set up
+    case off        // user explicitly disabled
+}
+
 enum ClaimResult {
     case ok
     case notSetUp
     case pmsetFailed(String)
+}
+
+func clamshellIsSetUp() -> Bool {
+    return FileManager.default.fileExists(atPath: ClamshellPaths.sudoersFile)
 }
 
 private func withClamshellLock<T>(_ body: () throws -> T) rethrows -> T {

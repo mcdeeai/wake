@@ -3,12 +3,15 @@
 A tiny macOS CLI that keeps your Mac awake while a command runs, then optionally pings you when it's done.
 
 ```sh
+# Just works. Notification when done. Lid-closed mode if it's set up.
+wake run -- codex
 wake run -- npm run build
-wake run --notify -- cargo build --release
-wake run --notify --display --reason "training run" -- python train.py
 
-# Close your laptop and walk away (one-time: `sudo wake clamshell setup`)
-wake run --clamshell --notify -- codex
+# Quiet, no notification
+wake run -q -- cargo build --release
+
+# Smoke test (close the lid, wait, get a notification)
+wake test 30
 ```
 
 ## Why does this exist?
@@ -27,9 +30,10 @@ caffeinate -i npm run build
 
 That covers the 90% case. `wake` is a thin convenience wrapper around the same `IOPMAssertion` API that `caffeinate` uses, with a few extras I kept reaching for:
 
-- **`--notify`** — desktop notification when the command finishes, with elapsed time and exit status. No more tabbing back to a terminal to check if your build is done.
-- **`--display`** — keep the display awake too (equivalent to `caffeinate -d`), but spelled in a way I can remember.
-- **`--clamshell`** — *close your laptop and walk away.* Keeps the system awake with the lid closed, no external display required. Needs a one-time `sudo wake clamshell setup`; see [Closing the lid](#closing-the-lid-aka-clamshell-mode).
+- **Convenient defaults** — notifications on, clamshell mode on (if set up). The common case is just `wake run -- cmd`. Use `--quiet` / `-q` to silence, `--no-clamshell` to skip lid-closed mode for one run.
+- **`--display`** — keep the display awake too (equivalent to `caffeinate -d`).
+- **`--clamshell`** — *close your laptop and walk away.* Auto-enabled when set up; pass explicitly to **require** it (errors out if `wake clamshell setup` hasn't been run). See [Closing the lid](#closing-the-lid-aka-clamshell-mode).
+- **`wake test [seconds]`** — built-in smoke test. Runs `sleep N` under wake so you can close the lid, walk to the kitchen, and confirm the notification fires when you come back.
 - **`--reason TEXT`** — labels the power assertion so it shows up clearly in `pmset -g assertions`. Helpful when you're auditing what's keeping your machine awake.
 - **Signal forwarding** — `Ctrl-C`, `SIGTERM`, `SIGHUP`, `SIGQUIT` are forwarded to the child process, so it cleans up properly.
 - **Exit code passthrough** — `wake` exits with the same status as the wrapped command, so it composes in shell pipelines and CI.
@@ -73,18 +77,22 @@ sudo install .build/release/wake /usr/local/bin/wake
 ## Usage
 
 ```
-wake run [--notify] [--display] [--clamshell] [--reason TEXT] -- <command> [args...]
+wake run [options] -- <command> [args...]
+wake test [seconds]               # smoke test (defaults to 30s)
 
-wake clamshell setup        # one-time install (requires sudo)
-wake clamshell uninstall    # remove sudoers + watchdog (requires sudo)
-wake clamshell status       # show clamshell setup state
+wake clamshell setup              # one-time install (requires sudo)
+wake clamshell uninstall          # remove sudoers + watchdog (requires sudo)
+wake clamshell status             # show clamshell setup state
 ```
+
+**Defaults:** notifications on, clamshell mode auto-on if set up.
 
 | Flag | Meaning |
 | --- | --- |
-| `--notify` | Show a notification when the command finishes |
+| `--quiet`, `-q` | Don't show a notification when finished |
 | `--display` | Also prevent display sleep |
-| `--clamshell` | Also keep system awake when the lid is closed (requires setup) |
+| `--clamshell` | Require clamshell mode (error if not set up) |
+| `--no-clamshell` | Skip clamshell mode for this run, even if set up |
 | `--reason TEXT` | Reason shown in `pmset -g assertions` (default: `wake CLI session`) |
 | `--` | Optional separator before the command |
 
@@ -94,18 +102,25 @@ The `--` is optional but recommended if your command has flags that look like `w
 
 ```sh
 # Local coding agent — get pinged when it's done thinking
-wake run --notify -- codex
-wake run --notify -- claude
-wake run --notify -- amp
+wake run -- codex
+wake run -- claude
+wake run -- amp
 
-# Long build, notify me when done
-wake run --notify -- pnpm build
+# Long build (notification fires when it finishes)
+wake run -- pnpm build
+
+# Same, but quiet
+wake run -q -- pnpm build
 
 # Keep the screen on for a presentation script
 wake run --display -- ./demo.sh
 
-# Tag your assertion so you can find it in pmset
-wake run --reason "nightly export" -- ./export.sh
+# Force clamshell — fail loudly if it's not set up
+wake run --clamshell -- codex
+
+# Smoke test the install
+wake test          # 30s
+wake test 60       # 60s
 ```
 
 ### Closing the lid (a.k.a. clamshell mode)
@@ -117,10 +132,12 @@ The default `wake run` only prevents *idle* sleep. To keep the system awake with
 sudo wake clamshell setup
 
 # Then, forever after:
-wake run --clamshell --notify -- codex
+wake run -- codex
 ```
 
-Now you can close your laptop, walk away, and Codex (or whatever) keeps running. When it finishes, `--notify` will fire a notification — open the lid and see it waiting.
+Once setup is done, `--clamshell` is automatic — every `wake run` will keep the system awake with the lid closed. Pass `--no-clamshell` to skip it for one run, or `--clamshell` explicitly to error out if setup is missing (useful in scripts where you want a guarantee).
+
+Close your laptop, walk away, and Codex (or whatever) keeps running. When it finishes, the default notification fires — open the lid and see it waiting.
 
 #### How it works (and what it touches)
 

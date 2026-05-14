@@ -8,9 +8,13 @@ nonisolated(unsafe) var currentChildPID: pid_t = 0
 
 func runCommand(args: [String]) {
     var rest = args
-    var notify = false
+    // Sensible defaults: notify on, clamshell auto (use it if set up).
+    var notify = true
     var preventDisplay = false
-    var clamshell = false
+    // .auto = use clamshell if set up, silently skip if not
+    // .require = use it; error if not set up
+    // .off = don't use it even if set up
+    var clamshellMode: ClamshellMode = .auto
     var reason = "wake CLI session"
 
     parseLoop: while let first = rest.first {
@@ -18,11 +22,17 @@ func runCommand(args: [String]) {
         case "--notify":
             notify = true
             rest.removeFirst()
+        case "--quiet", "-q", "--no-notify":
+            notify = false
+            rest.removeFirst()
         case "--display":
             preventDisplay = true
             rest.removeFirst()
         case "--clamshell":
-            clamshell = true
+            clamshellMode = .require
+            rest.removeFirst()
+        case "--no-clamshell":
+            clamshellMode = .off
             rest.removeFirst()
         case "--reason":
             rest.removeFirst()
@@ -64,7 +74,20 @@ func runCommand(args: [String]) {
 
     // Clamshell claim (lid-closed sleep)
     var clamshellClaimed = false
-    if clamshell {
+    switch clamshellMode {
+    case .off:
+        break
+    case .auto:
+        if clamshellIsSetUp() {
+            switch claimClamshell() {
+            case .ok:
+                clamshellClaimed = true
+            case .notSetUp, .pmsetFailed:
+                // Auto mode: stay quiet. `wake clamshell status` will explain.
+                break
+            }
+        }
+    case .require:
         switch claimClamshell() {
         case .ok:
             clamshellClaimed = true
