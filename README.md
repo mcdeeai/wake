@@ -10,6 +10,12 @@ wake run --notify --display --reason "training run" -- python train.py
 
 ## Why does this exist?
 
+Because people are propping their laptop lids open with books so [Codex](https://openai.com/codex), [Claude Code](https://www.anthropic.com/claude-code), [Amp](https://ampcode.com), and other local agents don't get killed by idle sleep. There's a better way.
+
+> "Are people still leaving their laptops open? In this day and age? 🤔"
+
+Yes. Local coding agents have real advantages over cloud ones — they read your actual filesystem, run your actual toolchain, respect your actual secrets, and don't bill per token of context. The trade-off is that they need a live machine. `wake` is the small thing that keeps that machine live.
+
 macOS already ships with [`caffeinate(8)`](x-man-page://caffeinate), and you should know about it:
 
 ```sh
@@ -61,6 +67,11 @@ The `--` is optional but recommended if your command has flags that look like `w
 ### Examples
 
 ```sh
+# Local coding agent — get pinged when it's done thinking
+wake run --notify -- codex
+wake run --notify -- claude
+wake run --notify -- amp
+
 # Long build, notify me when done
 wake run --notify -- pnpm build
 
@@ -70,6 +81,12 @@ wake run --display -- ./demo.sh
 # Tag your assertion so you can find it in pmset
 wake run --reason "nightly export" -- ./export.sh
 ```
+
+### One caveat
+
+`wake` prevents *idle* sleep — the kind that kicks in when you walk away from an open laptop. It does **not** prevent *clamshell* sleep (the kind triggered by closing the lid). There's no public IOKit API for that; if you need to close the lid, look at `sudo pmset -a disablesleep 1` or a tool like Amphetamine.
+
+Translation: keep the lid open, lose the book.
 
 ## How it works
 
