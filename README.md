@@ -6,6 +6,9 @@ A tiny macOS CLI that keeps your Mac awake while a command runs, then optionally
 wake run -- npm run build
 wake run --notify -- cargo build --release
 wake run --notify --display --reason "training run" -- python train.py
+
+# Close your laptop and walk away (one-time: `sudo wake clamshell setup`)
+wake run --clamshell --notify -- codex
 ```
 
 ## Why does this exist?
@@ -26,6 +29,7 @@ That covers the 90% case. `wake` is a thin convenience wrapper around the same `
 
 - **`--notify`** — desktop notification when the command finishes, with elapsed time and exit status. No more tabbing back to a terminal to check if your build is done.
 - **`--display`** — keep the display awake too (equivalent to `caffeinate -d`), but spelled in a way I can remember.
+- **`--clamshell`** — *close your laptop and walk away.* Keeps the system awake with the lid closed, no external display required. Needs a one-time `sudo wake clamshell setup`; see [Closing the lid](#closing-the-lid-aka-clamshell-mode).
 - **`--reason TEXT`** — labels the power assertion so it shows up clearly in `pmset -g assertions`. Helpful when you're auditing what's keeping your machine awake.
 - **Signal forwarding** — `Ctrl-C`, `SIGTERM`, `SIGHUP`, `SIGQUIT` are forwarded to the child process, so it cleans up properly.
 - **Exit code passthrough** — `wake` exits with the same status as the wrapped command, so it composes in shell pipelines and CI.
@@ -52,13 +56,18 @@ swift build -c release && sudo install .build/release/wake /usr/local/bin/wake
 ## Usage
 
 ```
-wake run [--notify] [--display] [--reason TEXT] -- <command> [args...]
+wake run [--notify] [--display] [--clamshell] [--reason TEXT] -- <command> [args...]
+
+wake clamshell setup        # one-time install (requires sudo)
+wake clamshell uninstall    # remove sudoers + watchdog (requires sudo)
+wake clamshell status       # show clamshell setup state
 ```
 
 | Flag | Meaning |
 | --- | --- |
 | `--notify` | Show a notification when the command finishes |
 | `--display` | Also prevent display sleep |
+| `--clamshell` | Also keep system awake when the lid is closed (requires setup) |
 | `--reason TEXT` | Reason shown in `pmset -g assertions` (default: `wake CLI session`) |
 | `--` | Optional separator before the command |
 
@@ -82,11 +91,45 @@ wake run --display -- ./demo.sh
 wake run --reason "nightly export" -- ./export.sh
 ```
 
-### One caveat
+### Closing the lid (a.k.a. clamshell mode)
 
-`wake` prevents *idle* sleep — the kind that kicks in when you walk away from an open laptop. It does **not** prevent *clamshell* sleep (the kind triggered by closing the lid). There's no public IOKit API for that; if you need to close the lid, look at `sudo pmset -a disablesleep 1` or a tool like Amphetamine.
+The default `wake run` only prevents *idle* sleep. To keep the system awake with the **lid closed** (no external display required), there's `--clamshell`:
 
-Translation: keep the lid open, lose the book.
+```sh
+# One-time install (writes a scoped sudoers fragment + a launchd watchdog)
+sudo wake clamshell setup
+
+# Then, forever after:
+wake run --clamshell --notify -- codex
+```
+
+Now you can close your laptop, walk away, and Codex (or whatever) keeps running. When it finishes, `--notify` will fire a notification — open the lid and see it waiting.
+
+#### How it works (and what it touches)
+
+There's no public IOKit assertion for clamshell sleep, so under the hood `--clamshell` toggles the system-wide `pmset -a disablesleep` flag for the duration of your command. To do that without prompting for a password every run, `wake clamshell setup` installs three things:
+
+| Path | Why |
+| --- | --- |
+| `/etc/sudoers.d/wake` | NOPASSWD entry for *exactly* `pmset -a disablesleep 0` and `pmset -a disablesleep 1` — nothing else |
+| `/usr/local/libexec/wake-watchdog.sh` | A 30-second watchdog that re-enables sleep if `wake` ever dies without cleaning up (kill -9, panic, power loss) |
+| `/Library/LaunchDaemons/com.mcdeeai.wake.watchdog.plist` | launchd plist that runs the watchdog as root |
+
+`wake` itself uses a per-PID marker directory at `/tmp/wake-clamshell.d/` and a `flock`-based critical section so multiple concurrent `wake --clamshell` runs cooperate cleanly: the first one flips `disablesleep` on, the last one flips it off. The watchdog is the safety net.
+
+To inspect or remove:
+
+```sh
+wake clamshell status       # shows installed state and current pmset value
+sudo wake clamshell uninstall
+```
+
+#### Honest caveats
+
+- `disablesleep` is system-wide. While `--clamshell` is active, your Mac will not sleep for *any* reason. The display will turn off when you close the lid, but the machine is fully running.
+- The sudoers fragment is mildly trust-asking: you're letting `wake` flip a system setting silently. It's scoped to two exact `pmset` invocations and nothing else, but read it before you install.
+- Apple-Silicon-specific quirks have been reported with `pmset disablesleep` in some macOS versions. Test on your hardware before relying on it.
+- For a fully GUI-managed alternative, [Amphetamine](https://apps.apple.com/app/amphetamine/id937984704) is excellent.
 
 ## How it works
 
